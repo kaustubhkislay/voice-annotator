@@ -54,9 +54,9 @@ class Session:
             self.pending_note = True
             return [_ev("status", "listening for note…")]
         if cmd.kind == "highlight" and self.pending_note:
-            self.pending_note = False
             self._ensure_started()
             self.vault.add_annotation("note", cmd.text)
+            self.pending_note = False
             return [_ev("status", "note attached ✓")]
         if cmd.kind == "highlight":
             return self._highlight(cmd.text, self.threshold)
@@ -65,9 +65,9 @@ class Session:
                 return [_ev("error", "nothing to retry")]
             return self._highlight(self.last_failed, self.threshold - 15)
         if cmd.kind == "note":
-            self.pending_note = False
             self._ensure_started()
             self.vault.add_annotation("note", cmd.text)
+            self.pending_note = False
             return [_ev("status", "note attached ✓")]
         if cmd.kind == "ask":
             self._ensure_started()

@@ -147,3 +147,16 @@ def test_direct_note_clears_pending_flag(tmp_path):
     assert s.pending_note is True
     s.handle("note explicit text")
     assert s.pending_note is False
+
+def test_pending_note_survives_ensure_started_failure(tmp_path):
+    z = FlakyFulltextZotero()
+    s = Session(z, VaultWriter(tmp_path), FakeLLM())
+    s.handle("note")
+    assert s.pending_note is True
+    ev1 = s.handle("this is my reaction")  # _ensure_started's fulltext() raises
+    assert ev1[0]["type"] == "error"
+    assert s.pending_note is True  # state unchanged on caught error
+    ev2 = s.handle("this is my reaction")  # retry succeeds this time
+    assert ev2[0]["type"] == "status"
+    assert s.pending_note is False
+    assert "- note: this is my reaction" in note_text(tmp_path)
