@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "name": "Voice Annotator Bridge",
+  "version": "0.1.0",
+  "description": "Local endpoints for voice-driven highlighting",
+  "applications": {
+    "zotero": {
+      "id": "voice-annotator@kaustubh.local",
+      "update_url": "https://voice-annotator.invalid/updates.json",
+      "strict_min_version": "7.0",
+      "strict_max_version": "9.*"
+    }
+  }
+}
