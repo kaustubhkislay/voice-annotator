@@ -21,3 +21,16 @@ def test_two_sentence_span():
 def test_garbage_scores_low():
     m = find_passage("completely unrelated cooking recipe for pasta", DOC)
     assert m.score < 60
+
+def test_length_prefilter_and_cache():
+    # Very short transcript should not match long sentences
+    short = "red"
+    m_short = find_passage(short, DOC)
+    # Should find a best match but not the entire document
+    assert len(m_short.text) < 50
+
+    # Repeated calls with same DOC should hit cache and return same result
+    m_short_again = find_passage(short, DOC)
+    assert m_short.text == m_short_again.text
+    assert m_short.score == m_short_again.score
+    assert m_short.start == m_short_again.start
