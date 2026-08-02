@@ -27,8 +27,8 @@
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
       (await r.json()).events.forEach(show);
     } catch (e) {
-      show({ type: "error", text: "connection failed — text restored" });
-      box.value = text;
+      show({ type: "error", text: "connection failed — dictation restored to input" });
+      box.value = box.value ? text + " " + box.value : text;
     }
   }
   async function submit() {
