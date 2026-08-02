@@ -24,3 +24,16 @@ def test_truncation():
     sent = []
     make(sent).consolidate("N", article_text="x" * 100_000)
     assert len(json.dumps(sent[0])) < 80_000
+
+def test_error_message_extraction():
+    def error_handler(req):
+        return httpx.Response(
+            401,
+            json={"error": {"message": "Invalid API key", "code": "invalid_auth"}}
+        )
+    client = LLMClient(api_key="bad", transport=httpx.MockTransport(error_handler))
+    try:
+        client.ask("q", article_text="a", note_md="n", focus="f")
+        assert False, "Should have raised"
+    except httpx.HTTPError as e:
+        assert "Invalid API key" in str(e)

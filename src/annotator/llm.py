@@ -14,7 +14,24 @@ class LLMClient:
         r = self.http.post("https://openrouter.ai/api/v1/chat/completions", json={
             "model": self.model,
             "messages": [{"role": "system", "content": system}, *messages]})
-        r.raise_for_status()
+
+        if not r.is_success:
+            error_msg = None
+            try:
+                error_data = r.json()
+                error_msg = error_data.get("error", {}).get("message")
+            except Exception:
+                pass
+
+            if error_msg:
+                raise httpx.HTTPStatusError(
+                    f"{r.status_code} {r.reason_phrase}: {error_msg}",
+                    request=r.request,
+                    response=r,
+                )
+            else:
+                r.raise_for_status()
+
         return r.json()["choices"][0]["message"]["content"]
 
     def ask(self, question: str, article_text: str, note_md: str, focus: str) -> str:
