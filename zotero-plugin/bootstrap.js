@@ -2,8 +2,9 @@
 //
 // Voice Annotator Bridge.
 //
-// Adds three endpoints to Zotero's local HTTP server (port 23119):
+// Adds four endpoints to Zotero's local HTTP server (port 23119):
 //   GET  /voiceannotator/current   -> {key, title, url, year, firstCreator}
+//   GET  /voiceannotator/fulltext  -> {content, attachmentKey, parentKey}
 //   POST /voiceannotator/highlight -> {annotationKey}
 //   POST /voiceannotator/delete    -> {ok: true}
 //
@@ -11,7 +12,9 @@
 
 var endpoints = {};
 
-var FIND_TIMEOUT_MS = 15000;
+// Keep this below the Python client's 10s httpx timeout, so a slow find
+// surfaces as a real 500 rather than a misleading "Is Zotero running?" error.
+var FIND_TIMEOUT_MS = 8000;
 var FIND_POLL_MS = 50;
 
 function log(msg) {
@@ -150,7 +153,7 @@ function register(path, methods, handler) {
     // object and returns [status, contentType, body] (server.js:459-484).
     init: async function (req) {
       try {
-        var out = await handler((req && req.data) || {});
+        var out = await handler((req && req.data) || {}, req || {});
         return [200, "application/json", JSON.stringify(out)];
       } catch (e) {
         log("error on " + path + ": " + (e && e.stack ? e.stack : e));
@@ -191,6 +194,34 @@ function startup() {
       url: url,
       year: date.slice(0, 4),
       firstCreator: parent.firstCreator || "",
+    };
+  });
+
+  // Serves the open attachment's text so the client never needs Zotero's read
+  // API, which is off by default and keys off the attachment rather than the
+  // parent item. Item.attachmentText (data/item.js:3871) reads the
+  // .zotero-ft-cache file when the attachment is fully indexed, falls back to
+  // the processor cache, and otherwise extracts on demand with PDFWorker.
+  register("/voiceannotator/fulltext", ["GET"], async function (data, req) {
+    var reader = activeReader();
+    var attachment = Zotero.Items.get(reader.itemID);
+    var parent = attachment.parentItem || attachment;
+
+    // The client sends the key it got from /current. Treat a mismatch as a
+    // caller error rather than silently returning text for a different paper.
+    var wanted = req.searchParams && req.searchParams.get("key");
+    if (wanted && wanted !== attachment.key && wanted !== parent.key) {
+      throw new Error(
+        "key '" + wanted + "' is not the open item (" + parent.key + ")"
+      );
+    }
+
+    var content = await attachment.attachmentText;
+    if (!content) throw new Error("No text available for the open attachment");
+    return {
+      content: content,
+      attachmentKey: attachment.key,
+      parentKey: parent.key,
     };
   });
 

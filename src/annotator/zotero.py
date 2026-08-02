@@ -36,8 +36,11 @@ class ZoteroClient:
         return self._parse_json(r, "/voiceannotator/current")
 
     def fulltext(self, key: str) -> str:
-        r = self._req("GET", f"/api/users/0/items/{key}/fulltext")
-        return self._parse_json(r, f"/api/users/0/items/{key}/fulltext", expected_key="content")
+        # Served by the bridge plugin, not Zotero's read API: that API is off by
+        # default and expects the attachment key, not the key /current returns.
+        # The key is sent only so the plugin can check we mean the open item.
+        r = self._req("GET", "/voiceannotator/fulltext", params={"key": key})
+        return self._parse_json(r, "/voiceannotator/fulltext", expected_key="content")
 
     def create_highlight(self, text: str, comment: str = "") -> str:
         r = self._req("POST", "/voiceannotator/highlight", json={"text": text, "comment": comment})

@@ -12,7 +12,8 @@ def test_current_and_fulltext_and_highlight():
     def handler(req):
         if req.url.path == "/voiceannotator/current":
             return httpx.Response(200, json={"key": "K1", "title": "T", "url": "u", "year": "2024", "firstCreator": "Greenblatt"})
-        if req.url.path == "/api/users/0/items/K1/fulltext":
+        if req.url.path == "/voiceannotator/fulltext":
+            assert req.url.params["key"] == "K1"
             return httpx.Response(200, json={"content": "full text here"})
         if req.url.path == "/voiceannotator/highlight":
             assert json.loads(req.content)["text"] == "passage"

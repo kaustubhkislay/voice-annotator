@@ -7,6 +7,7 @@ consumes them.
 | Method | Path | Request | Response |
 | --- | --- | --- | --- |
 | GET | `/voiceannotator/current` | – | `{key, title, url, year, firstCreator}` |
+| GET | `/voiceannotator/fulltext` | `?key=` (optional) | `{content, attachmentKey, parentKey}` |
 | POST | `/voiceannotator/highlight` | `{text, comment}` | `{annotationKey}` |
 | POST | `/voiceannotator/delete` | `{key}` | `{ok: true}` |
 
@@ -154,6 +155,24 @@ The default highlight colour is `Zotero.Annotations.DEFAULT_COLOR`
 `reader.navigate({position})` (`app:xpcom/reader.js:713`) scrolls the view to
 the new highlight and does its own `cloneInto`.
 
+### Full text
+
+`/voiceannotator/fulltext` reads `Zotero.Item.prototype.attachmentText`
+(`app:xpcom/data/item.js:3871-3928`). That getter is the right primitive
+because it degrades gracefully: it returns the `.zotero-ft-cache` file when the
+attachment is fully indexed (`Zotero.Fulltext.getItemCacheFile`,
+`app:xpcom/fulltext.js:1426`), falls back to the processor cache, and otherwise
+extracts on demand with `Zotero.PDFWorker.getFullText`. Zotero's own read-API
+endpoint (`app:xpcom/server/server_localAPI.js:770-800`) only reads the cache
+file and 404s when it is missing, so `attachmentText` is strictly more robust.
+
+The endpoint also removes two integration problems. Zotero's read API is off
+until the user enables it in Settings, and it keys off the **attachment** item
+while `/current` returns the **parent** key. Serving the text from the open
+reader avoids both. The optional `?key=` parameter is a sanity check: if it
+matches neither the attachment nor the parent key, the endpoint fails rather
+than returning text for a different paper.
+
 ## Manual test checklist
 
 Run against Zotero 9.0.6 on 2026-08-02, with
@@ -184,11 +203,20 @@ Run against Zotero 9.0.6 on 2026-08-02, with
   `ZoteroClient().current_item()`, `.create_highlight(...)`, `.delete_annotation(...)`
   all succeeded.
 
-## Known gap outside this plugin
+### Fix round, same day
 
-`ZoteroClient.fulltext()` calls `/api/users/0/items/{key}/fulltext`. That
-endpoint currently answers `403 Local API is not enabled`. The user must turn on
-Settings -> Advanced -> "Allow other applications on this computer to
-communicate with Zotero". Note also that `/voiceannotator/current` returns the
-**parent** item key, while the local API's fulltext endpoint expects the
-**attachment** key.
+- [x] `GET /voiceannotator/fulltext` with a PDF open returned 82377 characters,
+  beginning `The Economics of Recursive Self-Improvement\nTom Cunningham*...`,
+  with `attachmentKey: 9EDVICJ7` and `parentKey: RLTTLK9V`.
+- [x] `GET /voiceannotator/fulltext?key=RLTTLK9V` (the parent key `/current`
+  hands out) returned the same content.
+- [x] `GET /voiceannotator/fulltext?key=BOGUSKEY` returned `500` with body
+  `key 'BOGUSKEY' is not the open item (RLTTLK9V)`.
+- [x] `ZoteroClient().fulltext(current_item()["key"])` returned the same 82377
+  characters, with no read-API involvement and no `403`.
+- [x] `uv run pytest -q` → **40 passed**.
+- [x] Highlight and delete still work after the rebuild
+  (`PD89Z4TJ` created, then removed).
+- [x] `FIND_TIMEOUT_MS` lowered from 15000 to 8000 so a slow find returns a real
+  500 inside the Python client's 10s httpx timeout, instead of tripping it and
+  surfacing as "Is Zotero running?".
