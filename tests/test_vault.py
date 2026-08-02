@@ -38,3 +38,18 @@ def test_section_and_status(tmp_path):
     w.set_status("consolidated")
     t = p.read_text()
     assert "## Consolidation\n\nsummary here" in t and "status: consolidated" in t
+
+def test_undo_on_empty_note_is_noop(tmp_path):
+    w, p = make(tmp_path)
+    original = p.read_text()
+    w.undo_last_highlight()
+    assert p.read_text() == original
+
+def test_undo_twice_after_one_highlight(tmp_path):
+    w, p = make(tmp_path)
+    w.add_highlight("only one")
+    w.undo_last_highlight()
+    state_after_first_undo = p.read_text()
+    w.undo_last_highlight()
+    state_after_second_undo = p.read_text()
+    assert state_after_first_undo == state_after_second_undo and "only one" not in state_after_second_undo

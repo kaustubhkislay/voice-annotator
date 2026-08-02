@@ -28,7 +28,10 @@ class VaultWriter:
     def undo_last_highlight(self) -> None:
         assert self.path is not None
         lines = self.path.read_text().splitlines(keepends=True)
-        idx = max(i for i, l in enumerate(lines) if l.startswith('- "'))
+        highlight_indices = [i for i, l in enumerate(lines) if l.startswith('- "')]
+        if not highlight_indices:
+            return
+        idx = max(highlight_indices)
         end = idx + 1
         while end < len(lines) and lines[end].startswith("\t"):
             end += 1
