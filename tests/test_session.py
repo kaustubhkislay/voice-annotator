@@ -1,6 +1,7 @@
 from pathlib import Path
 from annotator.session import Session
 from annotator.vault import VaultWriter
+from annotator.zotero import ZoteroError
 
 DOC = ("AI control aims to maintain safety even if models scheme. "
        "Control evaluations measure this with red teams.")
@@ -16,6 +17,28 @@ class FakeZotero:
         self.highlights.append(text); return f"ANN{len(self.highlights)}"
     def delete_annotation(self, key):
         self.deleted.append(key)
+
+class FlakyFulltextZotero(FakeZotero):
+    """fulltext() raises once, then succeeds — simulates a transient failure."""
+    def __init__(self):
+        super().__init__()
+        self.fulltext_calls = 0
+    def fulltext(self, key):
+        self.fulltext_calls += 1
+        if self.fulltext_calls == 1:
+            raise ZoteroError("temporary outage")
+        return super().fulltext(key)
+
+class FlakyCreateZotero(FakeZotero):
+    """create_highlight() raises once, then succeeds."""
+    def __init__(self):
+        super().__init__()
+        self.create_calls = 0
+    def create_highlight(self, text, comment=""):
+        self.create_calls += 1
+        if self.create_calls == 1:
+            raise ZoteroError("write failed")
+        return super().create_highlight(text, comment)
 
 class FakeLLM:
     def ask(self, question, article_text, note_md, focus): return "llm answer"
@@ -72,3 +95,55 @@ def test_finished_and_quiz(tmp_path):
     ev = s.handle("end quiz")
     t = note_text(d)
     assert "## Quiz" in t and "status: consolidated" in t and "my quiz answer" in t
+
+def test_note_as_first_utterance_no_crash(tmp_path):
+    s, z, d = make(tmp_path)
+    ev = s.handle("note this is my first thought")
+    assert isinstance(ev, list) and ev[0]["type"] == "status"
+    assert "- note: this is my first thought" in note_text(d)
+
+def test_note_pending_first_then_text_no_crash(tmp_path):
+    s, z, d = make(tmp_path)
+    s.handle("note")
+    ev = s.handle("this is my reaction")
+    assert isinstance(ev, list) and ev[0]["type"] == "status"
+    assert "- note: this is my reaction" in note_text(d)
+
+def test_ensure_started_retries_after_fulltext_failure(tmp_path):
+    z = FlakyFulltextZotero()
+    s = Session(z, VaultWriter(tmp_path), FakeLLM())
+    ev1 = s.handle("Control evaluations measure this with red teams")
+    assert ev1[0]["type"] == "error"
+    assert s.item is None  # partial lazy-start must not stick
+    ev2 = s.handle("Control evaluations measure this with red teams")
+    assert ev2[0]["type"] == "status"
+    assert z.highlights
+
+def test_retry_survives_create_highlight_failure(tmp_path):
+    z = FlakyCreateZotero()
+    s = Session(z, VaultWriter(tmp_path), FakeLLM())
+    ev1 = s.handle("totally unrelated pasta recipe words here")
+    assert ev1[0]["type"] == "error"
+    failed_before = s.last_failed
+    assert failed_before is not None
+    ev2 = s.handle("Control evaluations measure this with red teams")  # matches, but write fails
+    assert ev2[0]["type"] == "error"
+    assert s.last_failed == failed_before  # state unchanged on caught error
+    ev3 = s.handle("retry")  # must not crash
+    assert isinstance(ev3, list)
+
+def test_quiz_mode_treats_undo_as_answer(tmp_path):
+    s, z, d = make(tmp_path)
+    s.handle("Control evaluations measure this with red teams")
+    s.handle("finished")
+    ev = s.handle("undo")
+    assert ev[0]["type"] == "chat"
+    assert z.deleted == []  # not treated as a real undo while in quiz mode
+
+def test_direct_note_clears_pending_flag(tmp_path):
+    s, z, d = make(tmp_path)
+    s.handle("Control evaluations measure this with red teams")
+    s.handle("note")
+    assert s.pending_note is True
+    s.handle("note explicit text")
+    assert s.pending_note is False

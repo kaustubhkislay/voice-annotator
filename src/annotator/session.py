@@ -27,13 +27,18 @@ class Session:
 
     def _ensure_started(self):
         if self.item is None:
-            self.item = self.zotero.current_item()
-            self.fulltext = self.zotero.fulltext(self.item["key"])
-            title = f'{self.item["firstCreator"]} {self.item["year"]} - {self.item["title"]}'
+            item = self.zotero.current_item()
+            fulltext = self.zotero.fulltext(item["key"])
+            title = f'{item["firstCreator"]} {item["year"]} - {item["title"]}'
             from datetime import date
-            self.vault.start(title, {"zotero_key": self.item["key"],
-                                     "url": self.item["url"],
+            self.vault.start(title, {"zotero_key": item["key"],
+                                     "url": item["url"],
                                      "read": date.today().isoformat()})
+            # Assign only after every fallible step succeeded, so a failure
+            # (e.g. fulltext() raising) leaves self.item unset and the next
+            # call retries from scratch instead of getting stuck half-started.
+            self.item = item
+            self.fulltext = fulltext
 
     def _note_md(self) -> str:
         return self.vault.path.read_text() if self.vault.path else ""
@@ -50,6 +55,7 @@ class Session:
             return [_ev("status", "listening for note…")]
         if cmd.kind == "highlight" and self.pending_note:
             self.pending_note = False
+            self._ensure_started()
             self.vault.add_annotation("note", cmd.text)
             return [_ev("status", "note attached ✓")]
         if cmd.kind == "highlight":
@@ -59,6 +65,8 @@ class Session:
                 return [_ev("error", "nothing to retry")]
             return self._highlight(self.last_failed, self.threshold - 15)
         if cmd.kind == "note":
+            self.pending_note = False
+            self._ensure_started()
             self.vault.add_annotation("note", cmd.text)
             return [_ev("status", "note attached ✓")]
         if cmd.kind == "ask":
@@ -98,8 +106,11 @@ class Session:
         if m.score < threshold:
             self.last_failed = transcript
             return [_ev("error", f'no match (best {m.score:.0f}): "{m.text[:80]}" — say retry or re-read')]
-        self.last_failed = None
+        # Only clear last_failed once the write actually succeeds — if
+        # create_highlight raises, state must stay exactly as it was
+        # before this call (caught errors must not mutate state).
         self.last_annotation_key = self.zotero.create_highlight(m.text)
         self.last_highlight_text = m.text
         self.vault.add_highlight(m.text)
+        self.last_failed = None
         return [_ev("status", f'highlighted ✓ ({m.score:.0f}): "{m.text[:80]}"')]
