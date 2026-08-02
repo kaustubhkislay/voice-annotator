@@ -14,19 +14,28 @@
 <script>
   const chat = document.getElementById("chat"), box = document.getElementById("box");
   let timer = null;
+  let queue = Promise.resolve();
   function show(ev) {
     const d = document.createElement("div");
     d.className = ev.type === "chat" ? "chat-msg" : ev.type;
     d.textContent = ev.text;
     chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
   }
+  async function send(text) {
+    try {
+      const r = await fetch("/utterance", { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      (await r.json()).events.forEach(show);
+    } catch (e) {
+      show({ type: "error", text: "connection failed — text restored" });
+      box.value = text;
+    }
+  }
   async function submit() {
     const text = box.value.trim();
     if (!text) return;
     box.value = "";
-    const r = await fetch("/utterance", { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-    (await r.json()).events.forEach(show);
+    queue = queue.then(() => send(text)).catch(() => {});
   }
   box.addEventListener("input", () => {          // Wispr Flow types but never hits Enter
     clearTimeout(timer);
