@@ -1,0 +1,23 @@
+from annotator.matcher import find_passage
+
+DOC = ("AI control aims to maintain safety even if models scheme. "
+       "Control evaluations measure this with red teams. "
+       "The blue team proposes protocols; the red team attacks them. "
+       "Deference is a separate axis entirely.")
+
+def test_exact_sentence():
+    m = find_passage("Control evaluations measure this with red teams", DOC)
+    assert m.score > 90 and "red teams" in m.text
+
+def test_misread_words_still_match():
+    m = find_passage("control evaluation measures this with red team", DOC)
+    assert m.score > 80 and m.text.startswith("Control evaluations")
+
+def test_two_sentence_span():
+    m = find_passage("Control evaluations measure this with red teams. "
+                     "The blue team proposes protocols", DOC)
+    assert "blue team" in m.text and "Control evaluations" in m.text
+
+def test_garbage_scores_low():
+    m = find_passage("completely unrelated cooking recipe for pasta", DOC)
+    assert m.score < 60
