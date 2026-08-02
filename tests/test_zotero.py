@@ -29,3 +29,17 @@ def test_error_wraps():
         raise httpx.ConnectError("refused")
     with pytest.raises(ZoteroError, match="Is Zotero running"):
         make(handler).current_item()
+
+
+def test_non_json_body_raises_zotero_error():
+    def handler(req):
+        return httpx.Response(200, content=b"not json at all")
+    with pytest.raises(ZoteroError, match="Unexpected response from Zotero"):
+        make(handler).fulltext("K1")
+
+
+def test_missing_annotation_key_raises_zotero_error():
+    def handler(req):
+        return httpx.Response(200, json={"someOtherField": "value"})
+    with pytest.raises(ZoteroError, match="missing key 'annotationKey'"):
+        make(handler).create_highlight("text")
