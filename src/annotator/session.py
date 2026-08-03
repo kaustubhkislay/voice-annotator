@@ -46,6 +46,18 @@ class Session:
     def _note_md(self) -> str:
         return self.vault.path.read_text() if self.vault.path else ""
 
+    def _mirror_comment(self, text: str) -> list[dict]:
+        # Best-effort: the note/answer is already durably saved to the vault
+        # by the time this runs, so a Zotero-side failure here must not
+        # undo that or block the caller — just surface it as an extra event.
+        if not self.last_annotation_key:
+            return []
+        try:
+            self.zotero.add_comment(self.last_annotation_key, text)
+        except ZoteroError as e:
+            return [_ev("error", f"note saved to vault; Zotero comment failed: {e}")]
+        return []
+
     def _handle(self, raw: str) -> list[dict]:
         cmd = parse_utterance(raw)
         if self.mode == "quiz" and cmd.kind not in ("end_quiz",):
@@ -60,7 +72,7 @@ class Session:
             self._ensure_started()
             self.vault.add_annotation("note", cmd.text)
             self.pending_note = False
-            return [_ev("status", "note attached ✓")]
+            return [_ev("status", "note attached ✓")] + self._mirror_comment(cmd.text)
         if cmd.kind == "highlight":
             return self._highlight(cmd.text, self.threshold)
         if cmd.kind == "retry":
@@ -71,14 +83,17 @@ class Session:
             self._ensure_started()
             self.vault.add_annotation("note", cmd.text)
             self.pending_note = False
-            return [_ev("status", "note attached ✓")]
+            return [_ev("status", "note attached ✓")] + self._mirror_comment(cmd.text)
         if cmd.kind == "ask":
             self._ensure_started()
             answer = self.llm.ask(cmd.text, self.fulltext, self._note_md(),
                                   self.last_highlight_text)
             self.vault.add_annotation("q", cmd.text)
             self.vault.add_annotation("a", answer)
-            return [_ev("chat", answer)]
+            events = [_ev("chat", answer)]
+            if self.last_annotation_key:
+                events += self._mirror_comment(f"Q: {cmd.text}\nA: {answer}")
+            return events
         if cmd.kind == "undo":
             if self.last_annotation_key:
                 self.zotero.delete_annotation(self.last_annotation_key)

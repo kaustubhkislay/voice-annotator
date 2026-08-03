@@ -2,11 +2,12 @@
 //
 // Voice Annotator Bridge.
 //
-// Adds four endpoints to Zotero's local HTTP server (port 23119):
+// Adds five endpoints to Zotero's local HTTP server (port 23119):
 //   GET  /voiceannotator/current   -> {key, title, url, year, firstCreator}
 //   GET  /voiceannotator/fulltext  -> {content, attachmentKey, parentKey}
 //   POST /voiceannotator/highlight -> {annotationKey}
 //   POST /voiceannotator/delete    -> {ok: true}
+//   POST /voiceannotator/comment   -> {ok: true}
 //
 // See README.md for the source citations behind every reader internal used here.
 
@@ -276,6 +277,30 @@ function startup() {
       if (item) break;
     }
     if (item) await item.eraseTx();
+    return { ok: true };
+  });
+
+  register("/voiceannotator/comment", ["POST"], async function (data) {
+    if (!data.key) throw new Error("'key' is required");
+    if (!data.comment) throw new Error("'comment' is required");
+    var item = null;
+    var libraryIDs = [Zotero.Libraries.userLibraryID];
+    try {
+      libraryIDs = Zotero.Libraries.getAll().map(function (l) {
+        return l.libraryID;
+      });
+    } catch (e) {
+      // fall back to the user library alone
+    }
+    for (var i = 0; i < libraryIDs.length; i++) {
+      item = Zotero.Items.getByLibraryAndKey(libraryIDs[i], data.key);
+      if (item) break;
+    }
+    if (!item) throw new Error("annotation '" + data.key + "' not found");
+
+    var existing = item.annotationComment || "";
+    item.annotationComment = existing ? existing + "\n" + data.comment : data.comment;
+    await item.saveTx();
     return { ok: true };
   });
 

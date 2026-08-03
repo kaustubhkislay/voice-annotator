@@ -51,3 +51,6 @@ class ZoteroClient:
 
     def delete_annotation(self, key: str) -> None:
         self._req("POST", "/voiceannotator/delete", json={"key": key})
+
+    def add_comment(self, key: str, comment: str) -> None:
+        self._req("POST", "/voiceannotator/comment", json={"key": key, "comment": comment})

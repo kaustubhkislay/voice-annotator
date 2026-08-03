@@ -8,7 +8,7 @@ DOC = ("AI control aims to maintain safety even if models scheme. "
 
 class FakeZotero:
     def __init__(self):
-        self.highlights, self.deleted = [], []
+        self.highlights, self.deleted, self.comments = [], [], []
     def current_item(self):
         return {"key": "K1", "title": "AI Control", "url": "u", "year": "2024", "firstCreator": "Greenblatt"}
     def fulltext(self, key):
@@ -17,6 +17,13 @@ class FakeZotero:
         self.highlights.append(text); self.last_key = key; return f"ANN{len(self.highlights)}"
     def delete_annotation(self, key):
         self.deleted.append(key)
+    def add_comment(self, key, comment):
+        self.comments.append((key, comment))
+
+class FlakyCommentZotero(FakeZotero):
+    """add_comment() always raises."""
+    def add_comment(self, key, comment):
+        raise ZoteroError("comment write failed")
 
 class FlakyFulltextZotero(FakeZotero):
     """fulltext() raises once, then succeeds — simulates a transient failure."""
@@ -204,3 +211,44 @@ def test_pending_note_survives_ensure_started_failure(tmp_path):
     assert ev2[0]["type"] == "status"
     assert s.pending_note is False
     assert "- note: this is my reaction" in note_text(tmp_path)
+
+def test_note_after_highlight_mirrors_to_zotero_comment_via_pending(tmp_path):
+    s, z, d = make(tmp_path)
+    s.handle("Control evaluations measure this with red teams")
+    s.handle("note")
+    s.handle("this is my reaction")
+    assert z.comments == [("ANN1", "this is my reaction")]
+
+def test_direct_note_after_highlight_mirrors_to_zotero_comment(tmp_path):
+    s, z, d = make(tmp_path)
+    s.handle("Control evaluations measure this with red teams")
+    s.handle("note this is my reaction")
+    assert z.comments == [("ANN1", "this is my reaction")]
+
+def test_note_with_no_prior_highlight_records_no_comment(tmp_path):
+    s, z, d = make(tmp_path)
+    ev = s.handle("note this is my first thought")
+    assert ev[0]["type"] == "status"
+    assert z.comments == []
+    assert "- note: this is my first thought" in note_text(d)
+
+def test_comment_failure_still_reports_note_attached(tmp_path):
+    z = FlakyCommentZotero()
+    s = Session(z, VaultWriter(tmp_path), FakeLLM())
+    s.handle("Control evaluations measure this with red teams")
+    ev = s.handle("note this is my reaction")
+    assert any(e["type"] == "status" and e["text"] == "note attached ✓" for e in ev)
+    assert any(e["type"] == "error" and "Zotero comment failed" in e["text"] for e in ev)
+    assert "- note: this is my reaction" in note_text(tmp_path)
+
+def test_ask_mirrors_qa_to_zotero_comment_when_last_annotation_exists(tmp_path):
+    s, z, d = make(tmp_path)
+    s.handle("Control evaluations measure this with red teams")
+    s.handle("ask what is a red team")
+    assert z.comments == [("ANN1", "Q: what is a red team\nA: llm answer")]
+
+def test_ask_records_no_comment_when_no_prior_highlight(tmp_path):
+    s, z, d = make(tmp_path)
+    ev = s.handle("ask what is a red team")
+    assert ev[0]["type"] == "chat"
+    assert z.comments == []

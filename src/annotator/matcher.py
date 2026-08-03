@@ -15,7 +15,9 @@ def _sentences(fulltext: str) -> tuple[tuple[int, str], ...]:
                  for m in re.finditer(r"[^.!?\n]+[.!?]?", fulltext) if m.group().strip())
 
 MARGIN = 5.0
-TITLE_THRESHOLD = 95.0
+TITLE_MARGIN = 15.0
+TITLE_CONTAINS_THRESHOLD = 90.0
+MIN_TITLE_LEN = 15
 
 def find_passage(transcript: str, fulltext: str, cursor: int | None = None,
                   title: str | None = None) -> Match:
@@ -45,12 +47,28 @@ def find_passage(transcript: str, fulltext: str, cursor: int | None = None,
     best_raw = max(c.score for c in candidates)
     eligible = [c for c in candidates if c.score >= best_raw - MARGIN]
 
-    if title is not None:
+    if title is not None and len(title) >= MIN_TITLE_LEN:
         def is_title_like(c: Match) -> bool:
-            return fuzz.token_sort_ratio(c.text.lower(), title.lower()) >= TITLE_THRESHOLD
-        non_title = [c for c in eligible if not is_title_like(c)]
-        if non_title:
-            eligible = non_title
+            # Title is (nearly) contained in the candidate — catches windows
+            # that pair the title with an author line, which dilutes a
+            # whole-string ratio against the bare title below any sane
+            # threshold while still being a title-only read for the user.
+            return fuzz.partial_ratio(title.lower(), c.text.lower()) >= TITLE_CONTAINS_THRESHOLD
+
+        title_margin_eligible = [c for c in candidates if c.score >= best_raw - TITLE_MARGIN]
+        non_title_wide = [c for c in title_margin_eligible if not is_title_like(c)]
+        if non_title_wide:
+            # At least one plausible (within TITLE_MARGIN) candidate isn't a
+            # title read, so drop every title-like candidate from the normal
+            # eligible set.
+            non_title_main = [c for c in eligible if not is_title_like(c)]
+            if non_title_main:
+                eligible = non_title_main
+            else:
+                eligible = [max(non_title_wide, key=lambda c: c.score)]
+        # else: every candidate within TITLE_MARGIN is title-like — keep the
+        # original eligible set, since the user may genuinely be reading the
+        # title.
 
     if cursor is None:
         eligible.sort(key=lambda c: c.start)

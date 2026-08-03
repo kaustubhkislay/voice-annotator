@@ -54,16 +54,36 @@ def test_cursor_behind_match_still_returned_when_no_forward_alternative():
     assert m.score > 80 and "red teams" in m.text
 
 TITLE_DOC = ("The Economics of Recursive Self-Improvement. "
-             "We model the economics of recursive self-improvement using three assumptions. "
+             "We build a model of how self-improving systems reshape AI economics using three assumptions. "
              "Deference is a separate axis entirely.")
 
 def test_title_demotion_prefers_body_over_title():
     m = find_passage("we model the economics of recursive self improvement", TITLE_DOC,
                       title="The Economics of Recursive Self-Improvement")
-    assert m.text.startswith("We model the economics")
+    assert m.text.startswith("We build a model")
 
 def test_title_only_match_still_returned_when_no_alternative():
     m = find_passage("the economics of recursive self improvement",
                       "The Economics of Recursive Self-Improvement.",
                       title="The Economics of Recursive Self-Improvement")
     assert "Economics of Recursive Self-Improvement" in m.text
+
+# Live failure: a "title + author line" sentence (one combined sentence, since
+# there's no period between title and author names) evades the old exact-match
+# title check (token_sort_ratio(candidate, title) >= 95 fails once author names
+# are appended) and wins outright as the earliest top scorer, while the true
+# body sentence the user meant to highlight scores ~9 points lower — outside
+# the normal MARGIN but still a plausible alternative.
+TITLE_CONTAMINATED_DOC = (
+    "The Economics of Recursive Self-Improvement by Nakamura and Osei-Bonsu. "
+    "We study how recursive self improvement changes the economics of AI development over time. "
+    "Deference is a separate axis entirely."
+)
+
+def test_title_contaminated_window_does_not_beat_body_sentence():
+    m = find_passage(
+        "the economics of recursive self improvement by nakamura and osei bonsu",
+        TITLE_CONTAMINATED_DOC,
+        title="The Economics of Recursive Self-Improvement",
+    )
+    assert m.text.startswith("We study how recursive self improvement")

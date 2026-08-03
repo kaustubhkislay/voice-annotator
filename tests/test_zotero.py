@@ -46,3 +46,22 @@ def test_missing_annotation_key_raises_zotero_error():
         return httpx.Response(200, json={"someOtherField": "value"})
     with pytest.raises(ZoteroError, match="missing key 'annotationKey'"):
         make(handler).create_highlight("text")
+
+
+def test_add_comment_posts_key_and_comment():
+    def handler(req):
+        if req.url.path == "/voiceannotator/comment":
+            body = json.loads(req.content)
+            assert body["key"] == "ANN1"
+            assert body["comment"] == "my note"
+            return httpx.Response(200, json={"ok": True})
+        raise AssertionError(req.url.path)
+    z = make(handler)
+    z.add_comment("ANN1", "my note")  # must not raise
+
+
+def test_add_comment_error_wraps_as_zotero_error():
+    def handler(req):
+        return httpx.Response(500, text="unknown key")
+    with pytest.raises(ZoteroError, match="Zotero returned 500"):
+        make(handler).add_comment("BADKEY", "my note")
