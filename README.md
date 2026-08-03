@@ -68,16 +68,18 @@ in Zotero. A Chrome extension for web articles is planned but not built.
    ```
 
    AeroSpace has no sticky windows, so the companion stays on one
-   workspace. Instead of moving it by hand, bind the summon endpoint to a
-   key. It pulls the window to your current workspace, top-right:
+   workspace. Instead of moving it by hand, bind `scripts/summon.sh` to a
+   key. The script tells AeroSpace to move the window into your current
+   workspace (so AeroSpace does not jump you to its old workspace), then
+   asks the app to re-pin the window top-right without taking focus:
 
    ```toml
    [mode.main.binding]
-   cmd-shift-space = 'exec-and-forget curl -s -m 2 -X POST http://localhost:8765/summon'
+   cmd-shift-space = 'exec-and-forget /path/to/voice-annotator/scripts/summon.sh'
    ```
 
-   This route needs no Accessibility permission. The in-app cmd+shift+space
-   hotkey does the same thing when your terminal has that permission.
+   This route needs no Accessibility permission. Without a tiling WM, a
+   plain `curl -X POST http://localhost:8765/summon` does the same job.
 
 6. Run the tool:
 

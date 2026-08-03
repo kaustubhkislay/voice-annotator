@@ -71,7 +71,9 @@ def main():
                                    on_top=True)
     window.events.shown += _pin_above_fullscreen
     def summon():
-        window.show()
+        # No window.show(): showing activates the app, and a tiling WM then
+        # switches to the window's workspace instead of leaving the user
+        # where they are. _pin orders the window front without focus.
         _pin_above_fullscreen()
 
     summon_ref["fn"] = summon
