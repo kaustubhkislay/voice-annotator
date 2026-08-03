@@ -18,21 +18,32 @@ def _pin_above_fullscreen(*_args):
     # macOS: turn the window into a true overlay panel — status level so it
     # sits above fullscreen apps, joins every Space (incl. native-fullscreen
     # Spaces), and is stationary so tiling window managers leave it alone.
-    # No-op on other platforms.
+    # Then re-assert the top-right frame: a tiling WM (e.g. AeroSpace) may
+    # have repositioned the window before these flags took effect. Runs on
+    # the Cocoa main thread. No-op on other platforms.
     try:
         import AppKit
+        from PyObjCTools import AppHelper
 
-        can_join_all_spaces = 1 << 0
-        stationary = 1 << 4
-        fullscreen_auxiliary = 1 << 8
-        for ns in AppKit.NSApplication.sharedApplication().windows():
-            ns.setLevel_(AppKit.NSStatusWindowLevel)
-            ns.setCollectionBehavior_(
-                ns.collectionBehavior()
-                | can_join_all_spaces
-                | stationary
-                | fullscreen_auxiliary
-            )
+        def apply():
+            can_join_all_spaces = 1 << 0
+            stationary = 1 << 4
+            fullscreen_auxiliary = 1 << 8
+            vf = AppKit.NSScreen.mainScreen().visibleFrame()
+            x = vf.origin.x + vf.size.width - WIDTH - MARGIN
+            y = vf.origin.y + vf.size.height - HEIGHT - MARGIN
+            for ns in AppKit.NSApplication.sharedApplication().windows():
+                ns.setLevel_(AppKit.NSStatusWindowLevel)
+                ns.setCollectionBehavior_(
+                    ns.collectionBehavior()
+                    | can_join_all_spaces
+                    | stationary
+                    | fullscreen_auxiliary
+                )
+                ns.setFrame_display_(AppKit.NSMakeRect(x, y, WIDTH, HEIGHT), True)
+                ns.orderFrontRegardless()
+
+        AppHelper.callAfter(apply)
     except Exception:
         pass
 
@@ -58,7 +69,11 @@ def main():
                                    x=screen.width - WIDTH - MARGIN, y=MARGIN,
                                    on_top=True)
     window.events.shown += _pin_above_fullscreen
-    hotkey = keyboard.GlobalHotKeys({"<ctrl>+<alt>+<space>": lambda: window.show()})
+    def summon():
+        window.show()
+        _pin_above_fullscreen()
+
+    hotkey = keyboard.GlobalHotKeys({"<ctrl>+<alt>+<space>": summon})
     hotkey.start()
     webview.start()
 
