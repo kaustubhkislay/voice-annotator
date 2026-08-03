@@ -73,10 +73,10 @@ in Zotero. A Chrome extension for web articles is planned but not built.
 
    ```toml
    [mode.main.binding]
-   ctrl-alt-space = 'exec-and-forget curl -s -m 2 -X POST http://localhost:8765/summon'
+   cmd-shift-space = 'exec-and-forget curl -s -m 2 -X POST http://localhost:8765/summon'
    ```
 
-   This route needs no Accessibility permission. The in-app ctrl+alt+space
+   This route needs no Accessibility permission. The in-app cmd+shift+space
    hotkey does the same thing when your terminal has that permission.
 
 6. Run the tool:
@@ -135,7 +135,7 @@ highlight.
 
 For each utterance:
 
-1. Press ctrl+alt+space. This shows the companion window.
+1. Press cmd+shift+space. This shows the companion window.
 2. Press your dictation tool's hotkey (for example, Wispr Flow's hotkey).
 3. Speak.
 

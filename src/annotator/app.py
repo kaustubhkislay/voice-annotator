@@ -75,7 +75,7 @@ def main():
         _pin_above_fullscreen()
 
     summon_ref["fn"] = summon
-    hotkey = keyboard.GlobalHotKeys({"<ctrl>+<alt>+<space>": summon})
+    hotkey = keyboard.GlobalHotKeys({"<cmd>+<shift>+<space>": summon})
     hotkey.start()
     webview.start()
 
