@@ -8,7 +8,7 @@ def _ev(type_: str, text: str) -> dict:
     return {"type": type_, "text": text}
 
 class Session:
-    def __init__(self, zotero, vault, llm, threshold: float = 80.0):
+    def __init__(self, zotero, vault, llm, threshold: float = 75.0):
         self.zotero, self.vault, self.llm = zotero, vault, llm
         self.threshold = threshold
         self.mode = "reading"

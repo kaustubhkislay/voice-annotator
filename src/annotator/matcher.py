@@ -17,6 +17,8 @@ def _sentences(fulltext: str) -> tuple[tuple[int, str], ...]:
 MARGIN = 5.0
 TITLE_MARGIN = 15.0
 TITLE_WHOLE_THRESHOLD = 90.0
+TITLE_CONTAINS_LEN_MULT = 2.5
+TITLE_CONTAINS_THRESHOLD = 95.0
 LENGTH_LOWER_MULT = 1 / 3
 LENGTH_UPPER_MULT = 6
 
@@ -77,7 +79,22 @@ def find_passage(transcript: str, fulltext: str, cursor: int | None = None,
             # No position rule — the abstract (and other head-region body
             # text) starts well within any plausible "head region" cutoff on
             # real documents, so position alone false-flags real content.
-            return fuzz.token_sort_ratio(_norm(c.text), title_norm) >= TITLE_WHOLE_THRESHOLD
+            cand_norm = _norm(c.text)
+            if fuzz.token_sort_ratio(cand_norm, title_norm) >= TITLE_WHOLE_THRESHOLD:
+                return True
+            # A "title + byline" window (e.g. "Title. Tom Cunningham*.") can
+            # dilute the symmetric ratio just enough to dodge the check above
+            # while still being (near-)nothing but the title with a short
+            # author tag appended. Catch that shape specifically: bounded by
+            # length (so a long body sentence that happens to quote the
+            # title verbatim isn't caught — TITLE_CONTAINS_LEN_MULT keeps
+            # this from firing on anything much longer than the title
+            # itself) and by a near-exact containment of the title inside
+            # the candidate (fuzz.partial_ratio, which a real section
+            # heading like "2 MODELS OF RECURSIVE SELF-IMPROVEMENT" doesn't
+            # clear at the 95 bar, even though it's title-adjacent text).
+            return (len(cand_norm) <= TITLE_CONTAINS_LEN_MULT * len(title_norm) and
+                    fuzz.partial_ratio(title_norm, cand_norm) >= TITLE_CONTAINS_THRESHOLD)
 
         title_margin_eligible = [c for c in candidates if c.score >= best_raw - TITLE_MARGIN]
         non_title_wide = [c for c in title_margin_eligible if not is_title_like(c)]

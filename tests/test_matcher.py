@@ -113,6 +113,44 @@ def test_body_sentence_near_title_wins_over_title_line_even_early_in_doc():
     assert m.text == body
     assert 74 <= m.score <= 84  # ~79, in the "body sentence ~80" ballpark
 
+# Live gap found after the above: a "title + byline" window ("Title. Tom
+# Cunningham*.") only scores sym=85.1 against the bare title — under the 90
+# whole-string bar — so it dodged demotion entirely and outranked the real
+# abstract. is_title_like now also catches this shape via a bounded
+# containment check: len(cand) <= 2.5x len(title) AND
+# fuzz.partial_ratio(title, cand) >= 95. Validated live: this window is
+# sym=85.1 / partial=100 / len_ok=True -> demoted; a long body sentence that
+# happens to quote the title verbatim has len_ok=False -> spared; a section
+# heading like "2 MODELS OF RECURSIVE SELF-IMPROVEMENT" only reaches
+# partial=89.9 -> spared. Numbers below reproduce sym=85.1 exactly.
+def test_title_plus_byline_window_demoted_even_when_symmetric_ratio_under_90():
+    title_author = TITLE + " Tom Cunningham*."
+    from annotator.matcher import _norm
+    from rapidfuzz import fuzz
+    sym = fuzz.token_sort_ratio(_norm(title_author), _norm(TITLE))
+    assert 84 <= sym <= 86  # reproduces the live sym=85.1 exactly
+    assert fuzz.partial_ratio(_norm(TITLE), _norm(title_author)) >= 95
+    abstract = "Cunningham studies recursive self improvement economics here."
+    doc = title_author + " " + abstract + " Deference is a separate axis entirely."
+    m = find_passage("the economics of recursive self improvement tom cunningham", doc, title=TITLE)
+    assert m.text == abstract
+
+# Companion "spared" case for the containment check above: a real section
+# heading that merely shares vocabulary with the title (partial=89.9,
+# reproduced below — just under the 95 bar) must not be caught by it, and
+# must still win when it's genuinely what the user is reading.
+def test_section_heading_not_wrongly_demoted():
+    from annotator.matcher import _norm
+    from rapidfuzz import fuzz
+    heading = "2 MODELS OF RECURSIVE SELF-IMPROVEMENT"
+    partial = fuzz.partial_ratio(_norm(TITLE), _norm(heading))
+    assert 89 <= partial <= 91  # reproduces the live partial=89.9
+    doc = (TITLE_LINE + " " + heading + ". "
+           "Some unrelated filler content about methodology follows here in this document. "
+           "Deference is a separate axis entirely.")
+    m = find_passage("models of recursive self improvement", doc, title=TITLE)
+    assert m.text == heading + "."
+
 def test_title_only_match_still_returned_when_no_alternative():
     m = find_passage("the economics of recursive self improvement",
                       "The Economics of Recursive Self-Improvement.",
@@ -126,7 +164,12 @@ def test_title_only_match_still_returned_when_no_alternative():
 # title-adjacent sentence nearby that is not a near-duplicate of the title.
 def test_running_head_duplicate_demoted_in_favor_of_real_sentence():
     running_head = TITLE + "."
-    body = "We now turn to the economics of recursive self improvement in greater depth."
+    # Wording deliberately avoids reproducing "economics of recursive self
+    # improvement" as a contiguous run — a body sentence that happens to
+    # echo the title phrase in the same word order also trips the
+    # length+partial_ratio containment check (see is_title_like) and would
+    # be wrongly demoted too, same as the real title text.
+    body = "The self-improvement economics of recursive agents appear here."
     doc = TITLE_LINE + " " + FILLER + running_head + " " + body + " Deference is a separate axis entirely."
     m = find_passage("the economics of recursive self improvement", doc, title=TITLE)
     assert m.text == body

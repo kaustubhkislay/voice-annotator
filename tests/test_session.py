@@ -256,10 +256,13 @@ def test_ask_records_no_comment_when_no_prior_highlight(tmp_path):
 # --- Length-aware match threshold ------------------------------------------
 #
 # Live report: "no matter what I say is matching with the text" — a short or
-# generic utterance reliably finds SOME window scoring above the flat
-# threshold=80 in a long document. Word-count bands raise the bar for short
+# generic utterance reliably finds SOME window scoring above a flat
+# threshold in a long document. Word-count bands raise the bar for short
 # utterances instead of relying on find_passage (a pure scorer) to know
-# about reliability.
+# about reliability. Base threshold is 75 (lowered from an earlier 80: live
+# numbers showed a partial-read body sentence landing at ~78-79 and generic
+# chatter at ~48, so 75 passes real partial reads with a large margin over
+# noise). The 4-6-word band keeps its own higher floor regardless.
 
 def test_utterance_under_four_words_rejected_without_matching(tmp_path):
     s, z, d = make(tmp_path)
@@ -269,10 +272,10 @@ def test_utterance_under_four_words_rejected_without_matching(tmp_path):
     assert z.highlights == []
     assert s.last_failed is None  # nothing stored to retry
 
-def test_five_word_utterance_needs_88_not_80(tmp_path):
+def test_five_word_utterance_needs_88_not_75(tmp_path):
     s, z, d = make(tmp_path)
     # 5 words, scores ~86 against "Control evaluations measure this with red
-    # teams." — clears the normal 80 threshold but not the 88 mid-band floor.
+    # teams." — clears the base 75 threshold but not the 88 mid-band floor.
     ev = s.handle("control evaluation measures this teams")
     assert ev[0]["type"] == "error"
     assert z.highlights == []
@@ -280,8 +283,16 @@ def test_five_word_utterance_needs_88_not_80(tmp_path):
 def test_seven_word_utterance_keeps_normal_threshold(tmp_path):
     s, z, d = make(tmp_path)
     # 7 words, scores ~84.5 against the same sentence — below the 88 mid-band
-    # floor but still clears the unchanged 80 threshold for 7+ words.
+    # floor but still clears the unchanged base threshold for 7+ words.
     ev = s.handle("control evaluation measures thing with blue teams")
+    assert ev[0]["type"] == "status"
+    assert z.highlights and "red teams" in z.highlights[0]
+
+def test_seven_plus_word_utterance_passes_at_75_but_would_fail_at_80(tmp_path):
+    s, z, d = make(tmp_path)
+    # 9 words, scores ~77 against "Control evaluations measure this with red
+    # teams." — below the old flat 80 threshold, but clears the new base 75.
+    ev = s.handle("control evaluation reviews this with blue team here today")
     assert ev[0]["type"] == "status"
     assert z.highlights and "red teams" in z.highlights[0]
 
@@ -291,7 +302,7 @@ def test_retry_after_mid_band_rejection_relaxes_that_bands_threshold(tmp_path):
     assert ev1[0]["type"] == "error"
     assert s.last_failed == "control evaluation measures this teams"
     # retry relaxes the 5-word band's 88 floor by 15 -> 73, which the ~86
-    # score clears, not the flat threshold - 15 (= 65).
+    # score clears, not the base threshold - 15 (= 60).
     ev2 = s.handle("retry")
     assert ev2[0]["type"] == "status"
     assert z.highlights and "red teams" in z.highlights[0]
