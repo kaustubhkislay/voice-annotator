@@ -16,13 +16,23 @@ def _sentences(fulltext: str) -> tuple[tuple[int, str], ...]:
 
 MARGIN = 5.0
 TITLE_MARGIN = 15.0
-HEAD_REGION = 400
 TITLE_WHOLE_THRESHOLD = 90.0
+LENGTH_LOWER_MULT = 1 / 3
+LENGTH_UPPER_MULT = 6
+
+def _norm(s: str) -> str:
+    # Lowercase and collapse every run of non-alphanumeric characters (spaces,
+    # punctuation, hyphens) to a single space. This is what lets a spoken
+    # "self improvement" match a printed "self-improvement" — hyphenation and
+    # punctuation differences stop mattering entirely once both sides go
+    # through the same normalization before scoring.
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", s.lower()).split())
 
 def find_passage(transcript: str, fulltext: str, cursor: int | None = None,
                   title: str | None = None) -> Match:
     sents = _sentences(fulltext)
     transcript_len = len(transcript)
+    transcript_norm = _norm(transcript)
     candidates: list[Match] = []
 
     for i in range(len(sents)):
@@ -33,12 +43,21 @@ def find_passage(transcript: str, fulltext: str, cursor: int | None = None,
             cand = " ".join(s for _, s in chunk)
             cand_len = len(cand)
 
-            # Length prefilter: skip if candidate length is >3x or <1/3x transcript length
+            # Length prefilter: lower bound guards against a short utterance
+            # spuriously matching a whole paragraph. Upper bound is loose
+            # (6x) so a partial read of a long sentence — which is much
+            # shorter than what it's read from — still stays in.
             if transcript_len > 0:
-                if cand_len > 3 * transcript_len or cand_len < transcript_len / 3:
+                if cand_len > LENGTH_UPPER_MULT * transcript_len or cand_len < transcript_len * LENGTH_LOWER_MULT:
                     continue
 
-            score = fuzz.token_sort_ratio(transcript.lower(), cand.lower())
+            cand_norm = _norm(cand)
+            # Blend token_set_ratio (robust to a partial read that's a subset
+            # of the sentence's words) with token_sort_ratio (still penalizes
+            # a candidate that's mostly unrelated extra words) so neither
+            # failure mode dominates on its own.
+            score = (fuzz.token_set_ratio(transcript_norm, cand_norm) +
+                     fuzz.token_sort_ratio(transcript_norm, cand_norm)) / 2
             candidates.append(Match(cand, score, chunk[0][0]))
 
     if not candidates:
@@ -48,17 +67,17 @@ def find_passage(transcript: str, fulltext: str, cursor: int | None = None,
     eligible = [c for c in candidates if c.score >= best_raw - MARGIN]
 
     if title is not None:
+        title_norm = _norm(title)
+
         def is_title_like(c: Match) -> bool:
-            # Position: the title (and any author line right after it) lives
-            # in the head region of the document, so any candidate that
-            # starts there is presumptively a title/byline read.
-            # Exact match: a symmetric whole-string ratio catches a running
-            # head reprinting the title verbatim on later pages — but a full
-            # body sentence that merely quotes/echoes the title phrase scores
-            # low here because the extra body words dilute both sides of the
-            # ratio symmetrically (unlike a one-sided containment check).
-            return (c.start < HEAD_REGION or
-                    fuzz.token_sort_ratio(c.text.lower(), title.lower()) >= TITLE_WHOLE_THRESHOLD)
+            # Symmetric, normalized whole-string ratio: kills the title line
+            # itself and any running head reprinting it verbatim, while a
+            # body sentence that merely echoes title vocabulary scores low
+            # because the extra body words dilute both sides of the ratio.
+            # No position rule — the abstract (and other head-region body
+            # text) starts well within any plausible "head region" cutoff on
+            # real documents, so position alone false-flags real content.
+            return fuzz.token_sort_ratio(_norm(c.text), title_norm) >= TITLE_WHOLE_THRESHOLD
 
         title_margin_eligible = [c for c in candidates if c.score >= best_raw - TITLE_MARGIN]
         non_title_wide = [c for c in title_margin_eligible if not is_title_like(c)]
