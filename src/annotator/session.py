@@ -19,6 +19,7 @@ class Session:
         self.pending_note = False
         self.last_failed = None
         self.quiz_history: list[dict] = []
+        self.cursor = None
 
     def handle(self, raw: str) -> list[dict]:
         try:
@@ -107,7 +108,7 @@ class Session:
 
     def _highlight(self, transcript: str, threshold: float) -> list[dict]:
         self._ensure_started()
-        m = find_passage(transcript, self.fulltext)
+        m = find_passage(transcript, self.fulltext, cursor=self.cursor, title=self.item["title"])
         if m.score < threshold:
             self.last_failed = transcript
             return [_ev("error", f'no match (best {m.score:.0f}): "{m.text[:80]}" — say retry or re-read')]
@@ -123,4 +124,5 @@ class Session:
             self.last_failed = transcript
             raise
         self.last_failed = None
+        self.cursor = m.start + len(m.text)
         return [_ev("status", f'highlighted ✓ ({m.score:.0f}): "{m.text[:80]}"')]

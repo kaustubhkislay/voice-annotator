@@ -167,6 +167,31 @@ def test_end_quiz_as_first_utterance_no_crash(tmp_path):
     assert ev[0]["type"] == "error" and ev[0]["text"] == "not in a quiz"
     assert list(d.glob("*.md")) == []  # no note was ever started
 
+DUP_DOC = ("The Economics of Recursive Self-Improvement. "
+           "AI control aims to maintain safety even if models scheme. "
+           "We model the economics of recursive self-improvement using three assumptions. "
+           "Deference is a separate axis entirely.")
+
+class DupZotero(FakeZotero):
+    def current_item(self):
+        return {"key": "K1", "title": "The Economics of Recursive Self-Improvement",
+                "url": "u", "year": "2024", "firstCreator": "Greenblatt"}
+    def fulltext(self, key):
+        return DUP_DOC
+
+def test_cursor_and_title_avoid_duplicate_title_highlight(tmp_path):
+    z = DupZotero()
+    s = Session(z, VaultWriter(tmp_path), FakeLLM())
+    # First, highlight a mid-document sentence to advance the cursor.
+    s.handle("AI control aims to maintain safety even if models scheme")
+    assert len(z.highlights) == 1
+    # Now dictate the ambiguous phrase which is similar to both the title
+    # and the later body sentence; the body sentence must win, not the title.
+    ev = s.handle("we model this the economics of recursive self-improvement")
+    assert ev[0]["type"] == "status"
+    assert len(z.highlights) == 2
+    assert "We model the economics" in z.highlights[-1]
+
 def test_pending_note_survives_ensure_started_failure(tmp_path):
     z = FlakyFulltextZotero()
     s = Session(z, VaultWriter(tmp_path), FakeLLM())
