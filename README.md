@@ -53,9 +53,19 @@ in Zotero. A Chrome extension for web articles is planned but not built.
    export VOICE_ANNOTATOR_VAULT_DIR=/path/to/your/vault
    ```
 
-5. On first run, macOS asks for Accessibility permission. The tool needs
-   this permission for the global hotkey. Grant it in System Settings ->
-   Privacy & Security -> Accessibility.
+5. The global hotkey needs Accessibility permission for your terminal app.
+   macOS often does not prompt for it. If the hotkey does nothing, grant it
+   manually in System Settings -> Privacy & Security -> Accessibility, then
+   restart the tool.
+
+   If you use a tiling window manager, exempt the companion window from
+   tiling. For AeroSpace, add to `~/.aerospace.toml`:
+
+   ```toml
+   [[on-window-detected]]
+   if.window-title-regex-substring = "voice annotator"
+   run = "layout floating"
+   ```
 
 6. Run the tool:
 

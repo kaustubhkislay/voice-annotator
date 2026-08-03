@@ -11,6 +11,24 @@ from .zotero import ZoteroClient
 
 READINGS = Path(os.environ.get("VOICE_ANNOTATOR_VAULT_DIR", str(Path.home() / "obsidian-ais" / "readings")))
 PORT = 8765
+WIDTH, HEIGHT, MARGIN = 280, 360, 12
+
+
+def _pin_above_fullscreen(window):
+    # macOS: join all Spaces (incl. fullscreen ones) so the panel overlays
+    # fullscreen apps instead of living on its own Space. No-op elsewhere.
+    try:
+        import AppKit
+
+        for ns in AppKit.NSApplication.sharedApplication().windows():
+            if ns.title() == "voice annotator":
+                can_join_all_spaces, fullscreen_auxiliary = 1 << 0, 1 << 8
+                ns.setCollectionBehavior_(
+                    ns.collectionBehavior() | can_join_all_spaces | fullscreen_auxiliary
+                )
+    except Exception:
+        pass
+
 
 def main():
     api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -27,8 +45,12 @@ def main():
             break
         except httpx.HTTPError:
             time.sleep(0.1)
+    screen = webview.screens[0]
     window = webview.create_window("voice annotator", f"http://localhost:{PORT}",
-                                   width=380, height=520, on_top=True)
+                                   width=WIDTH, height=HEIGHT,
+                                   x=screen.width - WIDTH - MARGIN, y=MARGIN,
+                                   on_top=True)
+    window.events.shown += lambda: _pin_above_fullscreen(window)
     hotkey = keyboard.GlobalHotKeys({"<ctrl>+<alt>+<space>": lambda: window.show()})
     hotkey.start()
     webview.start()
