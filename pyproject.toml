@@ -1,0 +1,29 @@
+[project]
+name = "annotator"
+version = "0.1.0"
+description = "Voice-driven reading annotation: dictate highlights and notes in Zotero, organized into an Obsidian vault"
+readme = "README.md"
+authors = [
+    { name = "Kaustubh", email = "kaustubh.kislay@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "pynput>=1.8.2",
+    "pywebview>=6.2.1",
+    "rapidfuzz>=3.14.5",
+    "uvicorn>=0.52.1",
+]
+
+[project.scripts]
+annotate = "annotator.app:main"
+
+[build-system]
+requires = ["uv_build>=0.11.16,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

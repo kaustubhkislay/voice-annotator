@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>voice annotator</title>
+<style>
+  body { font: 13px -apple-system, sans-serif; margin: 0; background: #1e1e1e; color: #ddd;
+         display: flex; flex-direction: column; height: 100vh; }
+  #chat { flex: 1; overflow-y: auto; padding: 8px; white-space: pre-wrap; }
+  .status { color: #8c8; } .error { color: #e88; } .chat-msg { color: #ade; margin: 6px 0; }
+  #box { margin: 8px; padding: 8px; font-size: 14px; border-radius: 6px;
+         border: 1px solid #444; background: #2a2a2a; color: #eee; }
+</style>
+<div id="chat"></div>
+<input id="box" placeholder="dictate here" autofocus>
+<script>
+  const chat = document.getElementById("chat"), box = document.getElementById("box");
+  let timer = null;
+  let queue = Promise.resolve();
+  function show(ev) {
+    const d = document.createElement("div");
+    d.className = ev.type === "chat" ? "chat-msg" : ev.type;
+    d.textContent = ev.text;
+    chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+  }
+  async function send(text) {
+    try {
+      const r = await fetch("/utterance", { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      (await r.json()).events.forEach(show);
+    } catch (e) {
+      show({ type: "error", text: "connection failed — dictation restored to input" });
+      box.value = box.value ? text + " " + box.value : text;
+    }
+  }
+  async function submit() {
+    const text = box.value.trim();
+    if (!text) return;
+    box.value = "";
+    queue = queue.then(() => send(text)).catch(() => {});
+  }
+  box.addEventListener("input", () => {          // Wispr Flow types but never hits Enter
+    clearTimeout(timer);
+    timer = setTimeout(submit, 600);
+  });
+  box.addEventListener("keydown", e => { if (e.key === "Enter") { clearTimeout(timer); submit(); } });
+</script>
