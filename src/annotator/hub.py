@@ -25,8 +25,17 @@ def _journal(entry: dict) -> None:
         pass
 
 
-def create_app(session) -> FastAPI:
+def create_app(session, on_summon=None) -> FastAPI:
     app = FastAPI()
+
+    @app.post("/summon")
+    def summon():
+        # Pull the companion window to the current workspace/position.
+        # Bound to a hotkey in the user's window manager (see README) so no
+        # Accessibility permission is needed for the in-process hotkey.
+        if on_summon is not None:
+            on_summon()
+        return {"ok": True}
 
     @app.post("/utterance")
     def utterance(u: Utterance):

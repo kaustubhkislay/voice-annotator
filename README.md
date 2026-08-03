@@ -67,6 +67,18 @@ in Zotero. A Chrome extension for web articles is planned but not built.
    run = "layout floating"
    ```
 
+   AeroSpace has no sticky windows, so the companion stays on one
+   workspace. Instead of moving it by hand, bind the summon endpoint to a
+   key. It pulls the window to your current workspace, top-right:
+
+   ```toml
+   [mode.main.binding]
+   ctrl-alt-space = 'exec-and-forget curl -s -m 2 -X POST http://localhost:8765/summon'
+   ```
+
+   This route needs no Accessibility permission. The in-app ctrl+alt+space
+   hotkey does the same thing when your terminal has that permission.
+
 6. Run the tool:
 
    ```bash

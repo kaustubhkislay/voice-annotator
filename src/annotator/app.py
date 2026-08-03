@@ -53,7 +53,8 @@ def main():
     if not api_key:
         raise SystemExit("Set OPENROUTER_API_KEY first.")
     session = Session(ZoteroClient(), VaultWriter(READINGS), LLMClient(api_key))
-    app = create_app(session)
+    summon_ref = {"fn": None}
+    app = create_app(session, on_summon=lambda: summon_ref["fn"] and summon_ref["fn"]())
     threading.Thread(target=lambda: uvicorn.run(app, port=PORT, log_level="warning"),
                      daemon=True).start()
     deadline = time.time() + 5.0
@@ -73,6 +74,7 @@ def main():
         window.show()
         _pin_above_fullscreen()
 
+    summon_ref["fn"] = summon
     hotkey = keyboard.GlobalHotKeys({"<ctrl>+<alt>+<space>": summon})
     hotkey.start()
     webview.start()
