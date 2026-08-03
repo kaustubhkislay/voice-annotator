@@ -14,18 +14,25 @@ PORT = 8765
 WIDTH, HEIGHT, MARGIN = 280, 360, 12
 
 
-def _pin_above_fullscreen(window):
-    # macOS: join all Spaces (incl. fullscreen ones) so the panel overlays
-    # fullscreen apps instead of living on its own Space. No-op elsewhere.
+def _pin_above_fullscreen(*_args):
+    # macOS: turn the window into a true overlay panel — status level so it
+    # sits above fullscreen apps, joins every Space (incl. native-fullscreen
+    # Spaces), and is stationary so tiling window managers leave it alone.
+    # No-op on other platforms.
     try:
         import AppKit
 
+        can_join_all_spaces = 1 << 0
+        stationary = 1 << 4
+        fullscreen_auxiliary = 1 << 8
         for ns in AppKit.NSApplication.sharedApplication().windows():
-            if ns.title() == "voice annotator":
-                can_join_all_spaces, fullscreen_auxiliary = 1 << 0, 1 << 8
-                ns.setCollectionBehavior_(
-                    ns.collectionBehavior() | can_join_all_spaces | fullscreen_auxiliary
-                )
+            ns.setLevel_(AppKit.NSStatusWindowLevel)
+            ns.setCollectionBehavior_(
+                ns.collectionBehavior()
+                | can_join_all_spaces
+                | stationary
+                | fullscreen_auxiliary
+            )
     except Exception:
         pass
 
@@ -50,7 +57,7 @@ def main():
                                    width=WIDTH, height=HEIGHT,
                                    x=screen.width - WIDTH - MARGIN, y=MARGIN,
                                    on_top=True)
-    window.events.shown += lambda: _pin_above_fullscreen(window)
+    window.events.shown += _pin_above_fullscreen
     hotkey = keyboard.GlobalHotKeys({"<ctrl>+<alt>+<space>": lambda: window.show()})
     hotkey.start()
     webview.start()
