@@ -74,11 +74,11 @@ class Session:
             self.pending_note = False
             return [_ev("status", "note attached ✓")] + self._mirror_comment(cmd.text)
         if cmd.kind == "highlight":
-            return self._highlight(cmd.text, self.threshold)
+            return self._highlight(cmd.text)
         if cmd.kind == "retry":
             if self.last_failed is None:
                 return [_ev("error", "nothing to retry")]
-            return self._highlight(self.last_failed, self.threshold - 15)
+            return self._highlight(self.last_failed, relax=15.0)
         if cmd.kind == "note":
             self._ensure_started()
             self.vault.add_annotation("note", cmd.text)
@@ -121,10 +121,31 @@ class Session:
             return [_ev("status", "quiz saved ✓")]
         return [_ev("error", f"unknown command {cmd.kind}")]
 
-    def _highlight(self, transcript: str, threshold: float) -> list[dict]:
+    # Below 4 words there's rarely enough signal in a fuzzy match to be
+    # reliable — some window in a long document scores above threshold no
+    # matter what's said. 4-6 word utterances get a stricter floor for the
+    # same reason, just less severely. matcher.find_passage stays a pure
+    # scorer; length-awareness belongs to the caller's accept/reject policy.
+    SHORT_MIN_WORDS = 4
+    MID_MAX_WORDS = 6
+    MID_MIN_THRESHOLD = 88.0
+
+    def _effective_threshold(self, transcript: str) -> float | None:
+        words = len(transcript.split())
+        if words < self.SHORT_MIN_WORDS:
+            return None
+        if words <= self.MID_MAX_WORDS:
+            return max(self.threshold, self.MID_MIN_THRESHOLD)
+        return self.threshold
+
+    def _highlight(self, transcript: str, relax: float = 0.0) -> list[dict]:
+        effective = self._effective_threshold(transcript)
+        if effective is None:
+            return [_ev("error", "too short to match reliably — read a full sentence")]
+        effective -= relax
         self._ensure_started()
         m = find_passage(transcript, self.fulltext, cursor=self.cursor, title=self.item["title"])
-        if m.score < threshold:
+        if m.score < effective:
             self.last_failed = transcript
             return [_ev("error", f'no match (best {m.score:.0f}): "{m.text[:80]}" — say retry or re-read')]
         # Only clear last_failed once the write actually succeeds. If the

@@ -16,8 +16,8 @@ def _sentences(fulltext: str) -> tuple[tuple[int, str], ...]:
 
 MARGIN = 5.0
 TITLE_MARGIN = 15.0
-TITLE_CONTAINS_THRESHOLD = 90.0
-MIN_TITLE_LEN = 15
+HEAD_REGION = 400
+TITLE_WHOLE_THRESHOLD = 90.0
 
 def find_passage(transcript: str, fulltext: str, cursor: int | None = None,
                   title: str | None = None) -> Match:
@@ -47,13 +47,18 @@ def find_passage(transcript: str, fulltext: str, cursor: int | None = None,
     best_raw = max(c.score for c in candidates)
     eligible = [c for c in candidates if c.score >= best_raw - MARGIN]
 
-    if title is not None and len(title) >= MIN_TITLE_LEN:
+    if title is not None:
         def is_title_like(c: Match) -> bool:
-            # Title is (nearly) contained in the candidate — catches windows
-            # that pair the title with an author line, which dilutes a
-            # whole-string ratio against the bare title below any sane
-            # threshold while still being a title-only read for the user.
-            return fuzz.partial_ratio(title.lower(), c.text.lower()) >= TITLE_CONTAINS_THRESHOLD
+            # Position: the title (and any author line right after it) lives
+            # in the head region of the document, so any candidate that
+            # starts there is presumptively a title/byline read.
+            # Exact match: a symmetric whole-string ratio catches a running
+            # head reprinting the title verbatim on later pages — but a full
+            # body sentence that merely quotes/echoes the title phrase scores
+            # low here because the extra body words dilute both sides of the
+            # ratio symmetrically (unlike a one-sided containment check).
+            return (c.start < HEAD_REGION or
+                    fuzz.token_sort_ratio(c.text.lower(), title.lower()) >= TITLE_WHOLE_THRESHOLD)
 
         title_margin_eligible = [c for c in candidates if c.score >= best_raw - TITLE_MARGIN]
         non_title_wide = [c for c in title_margin_eligible if not is_title_like(c)]

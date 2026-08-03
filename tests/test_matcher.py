@@ -53,14 +53,48 @@ def test_cursor_behind_match_still_returned_when_no_forward_alternative():
     m = find_passage("Control evaluations measure this with red teams", DOC, cursor=len(DOC))
     assert m.score > 80 and "red teams" in m.text
 
-TITLE_DOC = ("The Economics of Recursive Self-Improvement. "
-             "We build a model of how self-improving systems reshape AI economics using three assumptions. "
-             "Deference is a separate axis entirely.")
+# --- Position-based title demotion ---------------------------------------
+#
+# A containment check (fuzz.partial_ratio(title, candidate) >= 90) was tried
+# first and regressed live matching: real body sentences legitimately quote
+# or closely paraphrase a paper's title (e.g. "We model the economics of
+# recursive self-improvement (RSI)..."), so partial_ratio — which slides the
+# shorter string and only needs SOME window in the candidate to align with
+# the title — flagged the true target sentence as title-like and demoted it,
+# letting a garbage match win instead. partial_ratio is also degenerate for
+# short fragments (a 1-char extraction can score 100 against any title).
+#
+# The fix instead uses two independent, non-containment signals:
+#   1. Position: title/byline text lives in the document's head region
+#      (HEAD_REGION chars). A candidate starting there is presumptively a
+#      title/author-line read regardless of wording.
+#   2. Exact match: a SYMMETRIC whole-string ratio (both sides diluted by
+#      any extra words) catches a running head that reprints the title
+#      verbatim later in the document, while a body sentence that merely
+#      echoes title vocabulary — without being a near-duplicate of the
+#      whole string — scores low on both sides and is not flagged.
 
-def test_title_demotion_prefers_body_over_title():
-    m = find_passage("we model the economics of recursive self improvement", TITLE_DOC,
-                      title="The Economics of Recursive Self-Improvement")
-    assert m.text.startswith("We build a model")
+TITLE = "The Economics of Recursive Self-Improvement"
+TITLE_LINE = TITLE + "."
+FILLER = ("Prior work in this area has been limited by data availability and methodological "
+          "constraints across many decades of study. Researchers have proposed various "
+          "frameworks for understanding institutional change over long time horizons in "
+          "unrelated domains. This paper contributes to that literature by providing a novel "
+          "empirical approach grounded in historical case comparisons. ")
+assert len(TITLE_LINE) + 1 + len(FILLER) > 400  # keeps what follows past HEAD_REGION
+
+# Live failure (the exact regression the containment fix introduced): a body
+# sentence past the head region verbatim-contains the title phrase. Under a
+# containment check this false-flags as title-like and gets demoted in favor
+# of a garbage match; under position + symmetric-ratio it correctly wins,
+# since its position is past HEAD_REGION and its symmetric ratio against the
+# bare title is diluted well below 90 by the extra words.
+def test_body_sentence_quoting_title_wins_over_head_region_title_line():
+    body = "We model the economics of recursive self-improvement using three assumptions."
+    doc = TITLE_LINE + " " + FILLER + body + " Deference is a separate axis entirely."
+    assert doc.index(body) >= 400
+    m = find_passage("we model the economics of recursive self improvement", doc, title=TITLE)
+    assert m.text.startswith("We model the economics of recursive self-improvement")
 
 def test_title_only_match_still_returned_when_no_alternative():
     m = find_passage("the economics of recursive self improvement",
@@ -68,22 +102,37 @@ def test_title_only_match_still_returned_when_no_alternative():
                       title="The Economics of Recursive Self-Improvement")
     assert "Economics of Recursive Self-Improvement" in m.text
 
-# Live failure: a "title + author line" sentence (one combined sentence, since
-# there's no period between title and author names) evades the old exact-match
-# title check (token_sort_ratio(candidate, title) >= 95 fails once author names
-# are appended) and wins outright as the earliest top scorer, while the true
-# body sentence the user meant to highlight scores ~9 points lower — outside
-# the normal MARGIN but still a plausible alternative.
+# Head-region author-line window: a "title + author line" sentence (one
+# combined sentence, since there's no period between title and author names)
+# sits at the very start of the document, so the position signal alone flags
+# it as title-like — no containment ratio needed.
 TITLE_CONTAMINATED_DOC = (
-    "The Economics of Recursive Self-Improvement by Nakamura and Osei-Bonsu. "
+    "The Economics of Recursive Self-Improvement by Nakamura and Osei-Bonsu. " + FILLER +
     "We study how recursive self improvement changes the economics of AI development over time. "
     "Deference is a separate axis entirely."
 )
 
-def test_title_contaminated_window_does_not_beat_body_sentence():
+def test_head_region_author_line_window_demoted():
+    body = "We study how recursive self improvement changes the economics of AI development over time."
+    assert TITLE_CONTAMINATED_DOC.index(body) >= 400  # body is genuinely past the head region
     m = find_passage(
         "the economics of recursive self improvement by nakamura and osei bonsu",
         TITLE_CONTAMINATED_DOC,
         title="The Economics of Recursive Self-Improvement",
     )
     assert m.text.startswith("We study how recursive self improvement")
+
+# Running-head duplicate: the title reappears verbatim as a page header at a
+# mid-document offset (past HEAD_REGION), so position alone would not flag
+# it — but the symmetric whole-string ratio against the bare title is ~100,
+# so it is still demoted in favor of a real, merely title-adjacent sentence
+# nearby that is not a near-duplicate of the title.
+def test_running_head_duplicate_past_head_region_demoted():
+    running_head = TITLE + "."
+    body = "Our detailed study of the economics of recursive self improving systems follows."
+    doc = TITLE_LINE + " " + FILLER + running_head + " " + body + " Deference is a separate axis entirely."
+    running_head_offset = doc.index(running_head, len(TITLE_LINE) + 1)
+    assert running_head_offset >= 400
+    assert doc.index(body) >= 400
+    m = find_passage("the economics of recursive self improvement", doc, title=TITLE)
+    assert m.text.startswith("Our detailed study")
