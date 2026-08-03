@@ -1,5 +1,6 @@
-import os, threading
+import os, threading, time
 from pathlib import Path
+import httpx
 import uvicorn, webview
 from pynput import keyboard
 from .hub import create_app
@@ -19,6 +20,13 @@ def main():
     app = create_app(session)
     threading.Thread(target=lambda: uvicorn.run(app, port=PORT, log_level="warning"),
                      daemon=True).start()
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        try:
+            httpx.get(f"http://localhost:{PORT}/", timeout=0.2)
+            break
+        except httpx.HTTPError:
+            time.sleep(0.1)
     window = webview.create_window("voice annotator", f"http://localhost:{PORT}",
                                    width=380, height=520, on_top=True)
     hotkey = keyboard.GlobalHotKeys({"<ctrl>+<alt>+<space>": lambda: window.show()})

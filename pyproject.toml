@@ -1,7 +1,7 @@
 [project]
 name = "annotator"
 version = "0.1.0"
-description = "Add your description here"
+description = "Voice-driven reading annotation: dictate highlights and notes in Zotero, organized into an Obsidian vault"
 readme = "README.md"
 authors = [
     { name = "Kaustubh", email = "kaustubh.kislay@gmail.com" }

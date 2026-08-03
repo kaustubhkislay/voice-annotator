@@ -42,8 +42,11 @@ class ZoteroClient:
         r = self._req("GET", "/voiceannotator/fulltext", params={"key": key})
         return self._parse_json(r, "/voiceannotator/fulltext", expected_key="content")
 
-    def create_highlight(self, text: str, comment: str = "") -> str:
-        r = self._req("POST", "/voiceannotator/highlight", json={"text": text, "comment": comment})
+    def create_highlight(self, text: str, comment: str = "", key: str | None = None) -> str:
+        body = {"text": text, "comment": comment}
+        if key is not None:
+            body["key"] = key
+        r = self._req("POST", "/voiceannotator/highlight", json=body)
         return self._parse_json(r, "/voiceannotator/highlight", expected_key="annotationKey")
 
     def delete_annotation(self, key: str) -> None:

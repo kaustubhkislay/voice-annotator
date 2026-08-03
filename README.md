@@ -5,12 +5,10 @@ loud, and the tool turns your speech into Zotero highlights and a linked
 Obsidian note. It uses an LLM to answer questions, consolidate your notes,
 and quiz you at the end of a reading session.
 
-This is a personal tool. It is tested on macOS only. Do not assume it works
-on other platforms.
-
 ## Status
 
-This is a personal tool, not a maintained product. It supports PDFs opened
+This is a personal tool, not a maintained product. It is tested on macOS
+only. Do not assume it works on other platforms. It supports PDFs opened
 in Zotero. A Chrome extension for web articles is planned but not built.
 
 ## Requirements
@@ -85,6 +83,9 @@ Say a command word to control the session. Say plain text to highlight it.
 | "retry" | Retries the last failed highlight match, with a looser matching threshold. |
 | "finished" | Consolidates the note with the LLM and starts a quiz. |
 | "end quiz" | Ends the quiz, saves the transcript, and marks the note as consolidated. |
+
+During an active quiz, every utterance except "end quiz" is treated as a
+quiz answer. Commands like "undo" do not execute.
 
 ### The per-utterance loop
 

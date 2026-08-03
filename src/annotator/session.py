@@ -1,6 +1,7 @@
 import httpx
 from .grammar import parse_utterance
 from .matcher import find_passage
+from .vault import VaultError
 from .zotero import ZoteroError
 
 def _ev(type_: str, text: str) -> dict:
@@ -22,7 +23,7 @@ class Session:
     def handle(self, raw: str) -> list[dict]:
         try:
             return self._handle(raw)
-        except (ZoteroError, httpx.HTTPError) as e:
+        except (ZoteroError, httpx.HTTPError, VaultError) as e:
             return [_ev("error", str(e))]
 
     def _ensure_started(self):
@@ -30,6 +31,7 @@ class Session:
             item = self.zotero.current_item()
             fulltext = self.zotero.fulltext(item["key"])
             title = f'{item["firstCreator"]} {item["year"]} - {item["title"]}'
+            title = " ".join(title.split())
             from datetime import date
             self.vault.start(title, {"zotero_key": item["key"],
                                      "url": item["url"],
@@ -81,6 +83,7 @@ class Session:
                 self.zotero.delete_annotation(self.last_annotation_key)
                 self.vault.undo_last_highlight()
                 self.last_annotation_key = None
+                self.last_highlight_text = ""
                 return [_ev("status", "undone ✓")]
             return [_ev("error", "nothing to undo")]
         if cmd.kind == "finished":
@@ -93,6 +96,8 @@ class Session:
             self.quiz_history.append({"role": "assistant", "content": first})
             return [_ev("status", "consolidated ✓ — quiz starting"), _ev("chat", first)]
         if cmd.kind == "end_quiz":
+            if self.mode != "quiz":
+                return [_ev("error", "not in a quiz")]
             transcript = "\n".join(f'- {m["role"]}: {m["content"]}' for m in self.quiz_history)
             self.vault.add_section("Quiz", transcript)
             self.vault.set_status("consolidated")
@@ -106,11 +111,16 @@ class Session:
         if m.score < threshold:
             self.last_failed = transcript
             return [_ev("error", f'no match (best {m.score:.0f}): "{m.text[:80]}" — say retry or re-read')]
-        # Only clear last_failed once the write actually succeeds — if
-        # create_highlight raises, state must stay exactly as it was
-        # before this call (caught errors must not mutate state).
-        self.last_annotation_key = self.zotero.create_highlight(m.text)
-        self.last_highlight_text = m.text
-        self.vault.add_highlight(m.text)
+        # Only clear last_failed once the write actually succeeds. If the
+        # Zotero/vault write raises, save the original transcript to
+        # last_failed before re-raising, so "retry" can redo the write
+        # without the user re-dictating the passage.
+        try:
+            self.last_annotation_key = self.zotero.create_highlight(m.text, key=self.item["key"])
+            self.last_highlight_text = m.text
+            self.vault.add_highlight(m.text)
+        except ZoteroError:
+            self.last_failed = transcript
+            raise
         self.last_failed = None
         return [_ev("status", f'highlighted ✓ ({m.score:.0f}): "{m.text[:80]}"')]

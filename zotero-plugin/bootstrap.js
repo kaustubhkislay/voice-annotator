@@ -228,9 +228,19 @@ function startup() {
   register("/voiceannotator/highlight", ["POST"], async function (data) {
     if (!data.text) throw new Error("'text' is required");
     var reader = readyReader();
-    var found = await findAnnotation(reader, data.text);
 
     var attachment = Zotero.Items.get(reader.itemID);
+    var parent = attachment.parentItem || attachment;
+
+    // The client sends the key of the item its session is bound to. If the
+    // reader now shows a different document, refuse rather than writing a
+    // highlight to the wrong item.
+    if (data.key && data.key !== attachment.key && data.key !== parent.key) {
+      throw new Error("reader shows a different document");
+    }
+
+    var found = await findAnnotation(reader, data.text);
+
     var json = {
       key: Zotero.DataObjectUtilities.generateKey(),
       type: "highlight",

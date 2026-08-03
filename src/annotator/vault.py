@@ -1,6 +1,9 @@
 import re
 from pathlib import Path
 
+class VaultError(Exception):
+    pass
+
 class VaultWriter:
     def __init__(self, readings_dir: Path):
         self.dir = Path(readings_dir)
@@ -16,7 +19,8 @@ class VaultWriter:
         return self.path
 
     def _append(self, s: str) -> None:
-        assert self.path is not None
+        if self.path is None:
+            raise VaultError("no note started")
         self.path.write_text(self.path.read_text() + s)
 
     def add_highlight(self, text: str) -> None:
@@ -26,7 +30,8 @@ class VaultWriter:
         self._append(f"\t- {kind}: {text}\n")
 
     def undo_last_highlight(self) -> None:
-        assert self.path is not None
+        if self.path is None:
+            raise VaultError("no note started")
         lines = self.path.read_text().splitlines(keepends=True)
         highlight_indices = [i for i, l in enumerate(lines) if l.startswith('- "')]
         if not highlight_indices:
@@ -41,6 +46,7 @@ class VaultWriter:
         self._append(f"\n## {heading}\n\n{body}\n")
 
     def set_status(self, status: str) -> None:
-        assert self.path is not None
+        if self.path is None:
+            raise VaultError("no note started")
         t = self.path.read_text()
         self.path.write_text(re.sub(r"^status: .*$", f"status: {status}", t, count=1, flags=re.M))

@@ -16,13 +16,15 @@ def test_current_and_fulltext_and_highlight():
             assert req.url.params["key"] == "K1"
             return httpx.Response(200, json={"content": "full text here"})
         if req.url.path == "/voiceannotator/highlight":
-            assert json.loads(req.content)["text"] == "passage"
+            body = json.loads(req.content)
+            assert body["text"] == "passage"
+            assert body["key"] == "K1"
             return httpx.Response(200, json={"annotationKey": "ANN1"})
         raise AssertionError(req.url.path)
     z = make(handler)
     assert z.current_item()["key"] == "K1"
     assert z.fulltext("K1") == "full text here"
-    assert z.create_highlight("passage") == "ANN1"
+    assert z.create_highlight("passage", key="K1") == "ANN1"
 
 
 def test_error_wraps():
