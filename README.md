@@ -97,6 +97,28 @@ Say a command word to control the session. Say plain text to highlight it.
 During an active quiz, every utterance except "end quiz" is treated as a
 quiz answer. Commands like "undo" do not execute.
 
+#### What counts as a highlight
+
+You can read out loud in three ways, and all three highlight the matched
+text in Zotero and the note:
+
+- **A full sentence**, read as printed. This matches most reliably.
+- **A partial sentence** — reading only part of a long sentence, or
+  paraphrasing/misreading a few words, still matches the sentence (or
+  span of sentences) it came from.
+- **A short exact phrase** (fewer than 4 words, e.g. "Other definitions.")
+  — too short for a reliable fuzzy match on its own, so it must appear
+  **verbatim** in the document text. A hit highlights the whole sentence
+  that contains it, not just the quoted words. If the same short phrase
+  appears more than once, the tool picks the occurrence closest ahead of
+  where you last highlighted. If it doesn't appear verbatim anywhere, you
+  get an error asking you to read a longer span instead.
+
+Notes always attach to your **last highlight**, wherever it came from — do
+not re-read the passage when saying a note; just say "note ..." (or "note"
+followed by your note text as a separate utterance) right after the
+highlight.
+
 ### The per-utterance loop
 
 For each utterance:

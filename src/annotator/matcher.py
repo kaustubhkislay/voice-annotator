@@ -30,6 +30,32 @@ def _norm(s: str) -> str:
     # through the same normalization before scoring.
     return " ".join(re.sub(r"[^a-z0-9]+", " ", s.lower()).split())
 
+def _pick_by_cursor(matches: list[Match], cursor: int | None) -> Match:
+    if cursor is None:
+        return min(matches, key=lambda c: c.start)
+
+    def distance(c: Match) -> float:
+        return (c.start - cursor) if c.start >= cursor else 3 * (cursor - c.start)
+
+    return min(matches, key=lambda c: (distance(c), c.start))
+
+def find_exact(transcript: str, fulltext: str, cursor: int | None = None) -> Match | None:
+    # For short utterances a fuzzy score is unreliable — almost anything
+    # scores "close enough" somewhere in a long document. But a short
+    # utterance that's actually a verbatim quote ("Other definitions.") is
+    # unambiguous: normalize both sides and look for the transcript as a
+    # substring of each candidate sentence. A hit highlights the whole
+    # containing sentence (not just the quoted words) so the Zotero-side
+    # find has enough surrounding context to locate it in the reader.
+    transcript_norm = _norm(transcript)
+    if not transcript_norm:
+        return None
+    hits = [Match(text, 100.0, start) for start, text in _sentences(fulltext)
+            if transcript_norm in _norm(text)]
+    if not hits:
+        return None
+    return _pick_by_cursor(hits, cursor)
+
 def find_passage(transcript: str, fulltext: str, cursor: int | None = None,
                   title: str | None = None) -> Match:
     sents = _sentences(fulltext)

@@ -1,6 +1,6 @@
 import httpx
 from .grammar import parse_utterance
-from .matcher import find_passage
+from .matcher import find_passage, find_exact
 from .vault import VaultError
 from .zotero import ZoteroError
 
@@ -121,33 +121,44 @@ class Session:
             return [_ev("status", "quiz saved ✓")]
         return [_ev("error", f"unknown command {cmd.kind}")]
 
-    # Below 4 words there's rarely enough signal in a fuzzy match to be
-    # reliable — some window in a long document scores above threshold no
-    # matter what's said. 4-6 word utterances get a stricter floor for the
-    # same reason, just less severely. matcher.find_passage stays a pure
-    # scorer; length-awareness belongs to the caller's accept/reject policy.
+    # Below 4 words a fuzzy score is unreliable — some window in a long
+    # document scores "close enough" no matter what's said — but a short
+    # utterance is often a legitimate verbatim quote of a short passage
+    # ("Other definitions."), so we try an exact (normalized substring)
+    # match first via matcher.find_exact before giving up. 4-6 word
+    # utterances get the same exact-match-first treatment, then fall back to
+    # the fuzzy path with a stricter floor. matcher.find_passage/find_exact
+    # stay pure scorers; length-awareness belongs to the caller's
+    # accept/reject policy.
     SHORT_MIN_WORDS = 4
     MID_MAX_WORDS = 6
     MID_MIN_THRESHOLD = 88.0
 
-    def _effective_threshold(self, transcript: str) -> float | None:
-        words = len(transcript.split())
-        if words < self.SHORT_MIN_WORDS:
-            return None
-        if words <= self.MID_MAX_WORDS:
-            return max(self.threshold, self.MID_MIN_THRESHOLD)
-        return self.threshold
-
     def _highlight(self, transcript: str, relax: float = 0.0) -> list[dict]:
-        effective = self._effective_threshold(transcript)
-        if effective is None:
-            return [_ev("error", "too short to match reliably — read a full sentence")]
-        effective -= relax
         self._ensure_started()
+        words = len(transcript.split())
+
+        if words < self.SHORT_MIN_WORDS:
+            m = find_exact(transcript, self.fulltext, cursor=self.cursor)
+            if m is None:
+                return [_ev("error", "no exact match for short phrase — read a longer span")]
+            return self._commit_highlight(transcript, m)
+
+        if words <= self.MID_MAX_WORDS:
+            m = find_exact(transcript, self.fulltext, cursor=self.cursor)
+            if m is not None:
+                return self._commit_highlight(transcript, m)
+            effective = max(self.threshold, self.MID_MIN_THRESHOLD) - relax
+        else:
+            effective = self.threshold - relax
+
         m = find_passage(transcript, self.fulltext, cursor=self.cursor, title=self.item["title"])
         if m.score < effective:
             self.last_failed = transcript
             return [_ev("error", f'no match (best {m.score:.0f}): "{m.text[:80]}" — say retry or re-read')]
+        return self._commit_highlight(transcript, m)
+
+    def _commit_highlight(self, transcript: str, m) -> list[dict]:
         # Only clear last_failed once the write actually succeeds. If the
         # Zotero/vault write raises, save the original transcript to
         # last_failed before re-raising, so "retry" can redo the write

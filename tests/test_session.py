@@ -264,13 +264,54 @@ def test_ask_records_no_comment_when_no_prior_highlight(tmp_path):
 # chatter at ~48, so 75 passes real partial reads with a large margin over
 # noise). The 4-6-word band keeps its own higher floor regardless.
 
-def test_utterance_under_four_words_rejected_without_matching(tmp_path):
+def test_utterance_under_four_words_with_no_exact_match_rejected(tmp_path):
     s, z, d = make(tmp_path)
-    ev = s.handle("red teams here")  # 3 words
+    ev = s.handle("red teams here")  # 3 words, not a verbatim quote of anything in DOC
     assert ev[0]["type"] == "error"
-    assert ev[0]["text"] == "too short to match reliably — read a full sentence"
+    assert ev[0]["text"] == "no exact match for short phrase — read a longer span"
     assert z.highlights == []
     assert s.last_failed is None  # nothing stored to retry
+
+# --- Short exact-match highlighting -----------------------------------------
+#
+# Live UX finding (utterance journal): users legitimately highlight short
+# passages ("Other definitions."). A flat <4-word rejection blocked all of
+# them, forcing bad workarounds. Short utterances now get an exact
+# (normalized-substring) match attempt via matcher.find_exact before any
+# rejection; a hit highlights the whole containing sentence.
+
+def test_short_verbatim_phrase_highlights_containing_sentence(tmp_path):
+    s, z, d = make(tmp_path)
+    ev = s.handle("red teams")  # 2 words, verbatim substring of the 2nd sentence
+    assert ev[0]["type"] == "status"
+    assert z.highlights == ["Control evaluations measure this with red teams."]
+
+def test_short_verbatim_phrase_appearing_twice_uses_cursor(tmp_path):
+    doc = ("Other definitions apply in the introduction. "
+           "AI control aims to maintain safety even if models scheme. "
+           "Other definitions apply in the appendix as well.")
+    z = FakeZotero()
+    z.fulltext = lambda key: doc
+    s = Session(z, VaultWriter(tmp_path), FakeLLM())
+    s.handle("AI control aims to maintain safety even if models scheme")  # advances cursor
+    ev = s.handle("other definitions")  # 2 words, present at both start and end
+    assert ev[0]["type"] == "status"
+    assert z.highlights[-1] == "Other definitions apply in the appendix as well."
+
+def test_short_phrase_absent_rejected_with_no_highlight(tmp_path):
+    s, z, d = make(tmp_path)
+    ev = s.handle("purple giraffes")  # 2 words, not present anywhere in DOC
+    assert ev[0]["type"] == "error"
+    assert ev[0]["text"] == "no exact match for short phrase — read a longer span"
+    assert z.highlights == []
+
+def test_five_word_exact_phrase_matches_despite_low_fuzzy_score(tmp_path):
+    s, z, d = make(tmp_path)
+    # 5 words, verbatim tail of sentence 1; fuzzy alone scores ~83.3, below
+    # the mid-band's 88 floor, but the exact-match-first check catches it.
+    ev = s.handle("safety even if models scheme")
+    assert ev[0]["type"] == "status"
+    assert z.highlights == ["AI control aims to maintain safety even if models scheme."]
 
 def test_five_word_utterance_needs_88_not_75(tmp_path):
     s, z, d = make(tmp_path)

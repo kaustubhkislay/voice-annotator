@@ -1,9 +1,42 @@
-from annotator.matcher import find_passage
+from annotator.matcher import find_passage, find_exact
 
 DOC = ("AI control aims to maintain safety even if models scheme. "
        "Control evaluations measure this with red teams. "
        "The blue team proposes protocols; the red team attacks them. "
        "Deference is a separate axis entirely.")
+
+# --- find_exact --------------------------------------------------------
+
+def test_find_exact_returns_containing_sentence():
+    m = find_exact("red teams", DOC)
+    assert m is not None
+    assert m.score == 100.0
+    assert m.text == "Control evaluations measure this with red teams."
+
+def test_find_exact_hyphenation_normalized():
+    doc = ("AI control aims to maintain safety even if models scheme. "
+           "Recursive self-improvement is the process by which an AI system revises its own architecture.")
+    m = find_exact("self improvement", doc)
+    assert m is not None
+    assert m.text.startswith("Recursive self-improvement")
+
+def test_find_exact_no_hit_returns_none():
+    assert find_exact("purple giraffes", DOC) is None
+
+def test_find_exact_multiple_hits_cursor_picks_forward_one():
+    doc = ("Other definitions apply in the introduction. "
+           "AI control aims to maintain safety even if models scheme. "
+           "Other definitions apply in the appendix as well.")
+    cursor_after_first = doc.index("AI control")
+    m = find_exact("other definitions", doc, cursor=cursor_after_first)
+    assert m.text == "Other definitions apply in the appendix as well."
+
+def test_find_exact_multiple_hits_no_cursor_picks_earliest():
+    doc = ("Other definitions apply in the introduction. "
+           "AI control aims to maintain safety even if models scheme. "
+           "Other definitions apply in the appendix as well.")
+    m = find_exact("other definitions", doc)
+    assert m.text == "Other definitions apply in the introduction."
 
 def test_exact_sentence():
     m = find_passage("Control evaluations measure this with red teams", DOC)
